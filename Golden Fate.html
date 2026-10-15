@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Golden Fate Snake</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400&display=swap" rel="stylesheet">
+    <style>
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: #050505; /* Matte black base */
+            color: #E8E8E8; 
+            font-family: 'Inter', sans-serif; 
+            overflow: hidden; touch-action: none; user-select: none; 
+        }
+        /* Refined Matte & Metallic background */
+        #game-container { 
+            position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; 
+            background: radial-gradient(circle at center, #151515 0%, #030303 100%);
+        }
+        canvas { 
+            background: transparent; 
+            max-width: 100%; max-height: 100%; object-fit: contain; 
+            border: 1px solid rgba(212, 175, 55, 0.15); /* Subtle gold border */
+            box-shadow: 0 0 40px rgba(0,0,0,0.8); 
+        }
+        
+        .overlay { 
+            position: absolute; inset: 0; display: flex; flex-direction: column; 
+            justify-content: center; align-items: center; 
+            background: rgba(3, 3, 3, 0.9); backdrop-filter: blur(8px); 
+            z-index: 10; transition: opacity 0.6s ease; 
+        }
+        .hidden { display: none !important; opacity: 0; pointer-events: none; }
+        
+        .font-cinzel { font-family: 'Cinzel', serif; }
+        .text-gold { color: #D4AF37; } /* Metallic Gold */
+        .text-red { color: #9B111E; } /* Ruby Red for false food */
+        
+        button { 
+            border: 1px solid rgba(212, 175, 55, 0.5); 
+            background: rgba(10,10,10,0.8); 
+            color: #D4AF37; 
+            letter-spacing: 3px; text-transform: uppercase; 
+            cursor: pointer; padding: 14px 40px; 
+            font-weight: 400; transition: all 0.3s ease; 
+            font-size: 1.1rem; outline: none; 
+            font-family: 'Cinzel', serif;
+        }
+        button:hover { 
+            background: #D4AF37; color: #050505; 
+        }
+        
+        #hud { 
+            position: absolute; top: 40px; left: 40px; 
+            font-size: 1.25rem; font-weight: 300; z-index: 5; pointer-events: none; 
+        }
+        .progress-bar-container { 
+            width: 220px; height: 2px; background: rgba(255,255,255,0.1); 
+            margin-top: 10px; overflow: hidden; 
+        }
+        #progress-bar { 
+            height: 100%; background: #D4AF37; width: 0%; 
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1); 
+        }
+        
+        #buffList { 
+            margin-top: 15px; font-size: 0.75rem; color: rgba(232, 232, 232, 0.7); 
+            text-transform: uppercase; letter-spacing: 1.5px; 
+            display: flex; flex-direction: column; gap: 6px; 
+        }
+        
+        /* Mobile Touch Controls */
+        .touch-zone { position: absolute; top: 0; bottom: 0; width: 50%; z-index: 1; }
+        #touch-left { left: 0; }
+        #touch-right { right: 0; }
+        
+        /* Wheel Animation */
+        @keyframes subtlePulse {
+            0% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.03); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.9; }
+        }
+        .spinning-text { animation: subtlePulse 0.4s infinite; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas" width="1600" height="900"></canvas>
+        
+        <div id="hud" class="hidden">
+            <div class="font-cinzel" style="letter-spacing: 3px;">SCORE <span id="scoreDisplay" class="text-gold font-semibold ml-2">0</span></div>
+            <div class="text-xs mt-4" style="color: rgba(255,255,255,0.4); letter-spacing: 2px;">FATE FRAGMENTS</div>
+            <div class="progress-bar-container"><div id="progress-bar"></div></div>
+            <div id="livesDisplay" class="mt-3 text-sm hidden font-cinzel text-gold">LIVES: <span id="livesCount">0</span></div>
+            <div id="buffList"></div>
+        </div>
+
+        <div id="touch-left" class="touch-zone"></div>
+        <div id="touch-right" class="touch-zone"></div>
+
+        <!-- Start Screen -->
+        <div id="startScreen" class="overlay">
+            <h1 class="text-6xl font-cinzel mb-4 tracking-[0.4em] uppercase text-white">Golden <span class="text-gold">Fate</span></h1>
+            <div class="w-24 h-px bg-yellow-600 mb-10 opacity-40"></div>
+            <p class="mb-12 text-gray-400 text-center max-w-lg leading-relaxed font-light tracking-wide">
+                Steer with Left/Right or A/D.<br>Gather 5 fragments to spin the Wheel of Fate.<br>Beware the dark void and red illusions.
+            </p>
+            <button id="startBtn">Begin Journey</button>
+        </div>
+
+        <!-- Wheel of Fate Screen -->
+        <div id="wheelScreen" class="overlay hidden">
+            <h2 class="text-4xl font-cinzel mb-10 tracking-[0.3em] text-white uppercase border-b pb-4 px-8" style="border-color: rgba(212, 175, 55, 0.2);">The Wheel Turns</h2>
+            <div id="wheelResult" class="text-4xl font-cinzel mb-6 h-16 flex items-center justify-center text-center px-6 text-gold spinning-text" style="letter-spacing: 2px;">Spinning...</div>
+            <p id="wheelDesc" class="text-gray-300 mb-12 max-w-md text-center h-12 font-light tracking-wide"></p>
+            <button id="resumeBtn" class="hidden">Accept Fate</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameOverScreen" class="overlay hidden">
+            <h2 class="text-5xl font-cinzel mb-6 tracking-[0.4em] uppercase text-white">Cycle Broken</h2>
+            <div class="w-16 h-px bg-yellow-600 mb-8 opacity-40"></div>
+            <p class="text-xl mb-12 text-gray-400 font-light tracking-widest">FINAL SCORE: <span id="finalScore" class="text-gold font-cinzel text-2xl ml-2">0</span></p>
+            <button id="restartBtn">Begin Anew</button>
+        </div>
+    </div>
+
+    <script>
+        window.addEventListener('load', () => {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            const UI = {
+                start: document.getElementById('startScreen'),
+                wheel: document.getElementById('wheelScreen'),
+                over: document.getElementById('gameOverScreen'),
+                hud: document.getElementById('hud'),
+                score: document.getElementById('scoreDisplay'),
+                finalScore: document.getElementById('finalScore'),
+                progress: document.getElementById('progress-bar'),
+                wheelResult: document.getElementById('wheelResult'),
+                wheelDesc: document.getElementById('wheelDesc'),
+                resumeBtn: document.getElementById('resumeBtn'),
+                buffList: document.getElementById('buffList'),
+                livesDisplay: document.getElementById('livesDisplay'),
+                livesCount: document.getElementById('livesCount')
+            };
+
+            const GAME_W = 1600; 
+            const GAME_H = 900;
+            const FOOD_TO_WHEEL = 5;
+            
+            let state = 'menu'; // menu, playing, wheel, gameover
+            let score = 0;
+            let wheelProgress = 0;
+            let activeBuffs = [];
+            let frameCount = 0;
+            
+            const keys = { Left: false, Right: false };
+            
+            // --- GAME MODIFIERS & STATE ---
+            let mods = {};
+            function resetMods() {
+                mods = {
+                    speed: 5.5, turnSpeed: 0.07, multiplier: 1, maxFood: 1, 
+                    invincibleFrames: 0, lives: 0, shield: false,
+                    magnetic: false, clairvoyance: false, reach: false,
+                    starlight: false, gluttony: false, tranquility: false,
+                    portalMaster: false, goldEchoes: false, etherealTailFrames: 0,
+                    drunk: false, inverted: false, fog: false, tremors: false,
+                    fleeingFood: false, lethalWalls: false, glitchFrames: 0,
+                    thick: false, tailSpikes: false, vertigo: false, anchored: false
+                };
+                activeBuffs = [];
+                updateBuffUI();
+            }
+
+            let snake = { x: GAME_W/2, y: GAME_H/2, a: 0, history: [], length: 30 };
+            let food = []; let falseFood = []; let bombs = []; 
+            let portals = []; let gravityWells = []; let particles = [];
+
+            // --- 50 FATES (25 Buffs, 25 Debuffs) ---
+            const FATES = [
+                // 25 BUFFS
+                { name: "Serpent's Grace", type: "buff", desc: "Turning speed increased.", apply: () => { mods.turnSpeed *= 1.25; addBuffUI("Enhanced Turning"); } },
+                { name: "Golden Aura", type: "buff", desc: "Score yield multiplied.", apply: () => { mods.multiplier++; addBuffUI(`x${mods.multiplier} Multiplier`); } },
+                { name: "Abundance", type: "buff", desc: "More fragments manifest.", apply: () => { mods.maxFood++; maintainFood(); addBuffUI("Extra Food"); } },
+                { name: "Phantom Form", type: "buff", desc: "Phase through hazards temporarily.", apply: () => { mods.invincibleFrames = 900; } },
+                { name: "Second Chance", type: "buff", desc: "A checkpoint saves you from one fatal error.", apply: () => { mods.lives++; updateLivesUI(); } },
+                { name: "Magnetic Maw", type: "buff", desc: "Fragments are drawn to you.", apply: () => { mods.magnetic = true; addBuffUI("Magnetism"); } },
+                { name: "Time Dilation", type: "buff", desc: "Movement slows, granting precision.", apply: () => { mods.speed = Math.max(3, mods.speed - 1.5); addBuffUI("Precision Control"); } },
+                { name: "Ouroboros Shed", type: "buff", desc: "Halves your length safely.", apply: () => { snake.length = Math.max(30, Math.floor(snake.length / 2)); snake.history = snake.history.slice(0, snake.length); addBuffUI("Tail Shed"); } },
+                { name: "Golden Apple", type: "buff", desc: "A burst of immediate wealth.", apply: () => { score += 500 * mods.multiplier; updateScoreUI(); } },
+                { name: "Vitality", type: "buff", desc: "Grants two additional chances.", apply: () => { mods.lives += 2; updateLivesUI(); } },
+                { name: "Clairvoyance", type: "buff", desc: "Illuminates the path to fragments.", apply: () => { mods.clairvoyance = true; addBuffUI("Clairvoyance"); } },
+                { name: "Midas Touch", type: "buff", desc: "Hazards transform into fragments.", apply: () => { falseFood.forEach(f => food.push(f)); bombs.forEach(b => food.push({x:b.x,y:b.y,r:12})); falseFood=[]; bombs=[]; addBuffUI("Midas Touch"); } },
+                { name: "Momentum", type: "buff", desc: "Speed increases, score multiplier rises.", apply: () => { mods.speed += 1.5; mods.multiplier++; addBuffUI("Momentum"); } },
+                { name: "Spectral Tail", type: "buff", desc: "Your body becomes immaterial.", apply: () => { mods.etherealTailFrames = 1200; addBuffUI("Spectral Tail"); } },
+                { name: "Purify", type: "buff", desc: "Cleanses the arena of all hazards.", apply: () => { falseFood=[]; bombs=[]; gravityWells=[]; portals=[]; addBuffUI("Purify"); } },
+                { name: "Extended Reach", type: "buff", desc: "Collect fragments from further away.", apply: () => { mods.reach = true; addBuffUI("Extended Reach"); } },
+                { name: "Starlight", type: "buff", desc: "Illuminates the darkness.", apply: () => { mods.starlight = true; addBuffUI("Starlight"); } },
+                { name: "Prosperous Winds", type: "buff", desc: "A swarm of fragments appears.", apply: () => { for(let i=0;i<8;i++) food.push({x:getSafeX(),y:getSafeY(),r:12}); } },
+                { name: "Divine Shield", type: "buff", desc: "An absolute ward against the next death.", apply: () => { mods.shield = true; addBuffUI("Divine Shield"); } },
+                { name: "Gluttony", type: "buff", desc: "Fragments grant triple score, double length.", apply: () => { mods.gluttony = true; addBuffUI("Gluttony"); } },
+                { name: "Tranquility", type: "buff", desc: "Movement slows significantly for precise control.", apply: () => { mods.speed = Math.max(2.5, mods.speed - 2); mods.turnSpeed *= 1.2; addBuffUI("Tranquility"); } },
+                { name: "Ascended State", type: "buff", desc: "Total invincibility and speed temporarily.", apply: () => { mods.invincibleFrames = 600; mods.speed += 2; addBuffUI("Ascended"); } },
+                { name: "Portal Master", type: "buff", desc: "Rifts grant massive points when entered.", apply: () => { mods.portalMaster = true; addBuffUI("Portal Master"); } },
+                { name: "Echoes of Gold", type: "buff", desc: "Leaves fragments in your wake.", apply: () => { mods.goldEchoes = true; addBuffUI("Golden Echoes"); } },
+                { name: "Harmony", type: "buff", desc: "Stabilizes all erratic conditions.", apply: () => { mods.drunk = false; mods.inverted = false; mods.tremors = false; mods.fog = false; mods.vertigo = false; addBuffUI("Harmony"); } },
+
+                // 25 DEBUFFS
+                { name: "Abyssal Pull", type: "debuff", desc: "A gravity well distorts space.", apply: () => spawnGravityWell(0.15) },
+                { name: "Shattered Path", type: "debuff", desc: "Lethal static obstacles appear.", apply: () => spawnBombs(5) },
+                { name: "Blood Echoes", type: "debuff", desc: "Crimson illusions will sever your path.", apply: () => spawnFalseFood(4) },
+                { name: "Void Rifts", type: "debuff", desc: "Unstable portals relocate you instantly.", apply: () => spawnPortals(3) },
+                { name: "Drunk Serpent", type: "debuff", desc: "Movement becomes erratic.", apply: () => { mods.drunk = true; } },
+                { name: "Inverted Reality", type: "debuff", desc: "Directions are reversed.", apply: () => { mods.inverted = true; } },
+                { name: "Haste", type: "debuff", desc: "Uncontrollable speed.", apply: () => { mods.speed += 2.5; } },
+                { name: "Sluggish", type: "debuff", desc: "Agility severely reduced.", apply: () => { mods.turnSpeed *= 0.5; } },
+                { name: "Blinding Fog", type: "debuff", desc: "Vision is heavily obscured.", apply: () => { mods.fog = true; } },
+                { name: "Tremors", type: "debuff", desc: "Reality quakes.", apply: () => { mods.tremors = true; } },
+                { name: "Starvation", type: "debuff", desc: "Fragments become scarce.", apply: () => { mods.maxFood = 1; while(food.length>1) food.pop(); } },
+                { name: "Phantom Hunger", type: "debuff", desc: "Fragments flee from your presence.", apply: () => { mods.fleeingFood = true; } },
+                { name: "Lethal Boundaries", type: "debuff", desc: "The edges of reality become fatal.", apply: () => { mods.lethalWalls = true; } },
+                { name: "Temporal Glitch", type: "debuff", desc: "Time stutters.", apply: () => { mods.glitchFrames = 600; } },
+                { name: "Curse of Greed", type: "debuff", desc: "Wealth multiplier reset.", apply: () => { mods.multiplier = 1; updateBuffUI(); } },
+                { name: "Bloated", type: "debuff", desc: "Your form expands, making evasion harder.", apply: () => { mods.thick = true; } },
+                { name: "Black Hole", type: "debuff", desc: "An inescapable pull at the center.", apply: () => { gravityWells.push({ x: GAME_W/2, y: GAME_H/2, r: 400, power: 0.3 }); } },
+                { name: "Fragile", type: "debuff", desc: "All extra chances stripped away.", apply: () => { mods.lives = 0; updateLivesUI(); } },
+                { name: "Tail Spike", type: "debuff", desc: "Your tail sheds hazards.", apply: () => { mods.tailSpikes = true; } },
+                { name: "Vertigo", type: "debuff", desc: "The world spins.", apply: () => { mods.vertigo = true; } },
+                { name: "Ethereal Chains", type: "debuff", desc: "Movement is anchored.", apply: () => { mods.anchored = true; } },
+                { name: "False Hope", type: "debuff", desc: "Fate fragment progress shattered.", apply: () => { wheelProgress = 0; updateScoreUI(); } },
+                { name: "Sudden Death", type: "debuff", desc: "Purges all positive effects.", apply: () => { mods.invincibleFrames=0; mods.shield=false; mods.etherealTailFrames=0; } },
+                { name: "The Swarm", type: "debuff", desc: "Illusions flood the arena.", apply: () => spawnFalseFood(10) },
+                { name: "Growth Spurt", type: "debuff", desc: "Your form lengthens dangerously.", apply: () => { snake.length += 150; } }
+            ];
+
+            function spawnGravityWell(pow) { gravityWells.push({ x: getSafeX(), y: getSafeY(), r: 250, power: pow }); }
+            function spawnBombs(count) { for(let i=0; i<count; i++) bombs.push({ x: getSafeX(), y: getSafeY(), r: 20 }); }
+            function spawnFalseFood(count) { for(let i=0; i<count; i++) falseFood.push({ x: getSafeX(), y: getSafeY(), r: 12 }); }
+            function spawnPortals(count) { 
+                for(let i=0; i<count; i++) {
+                    portals.push({ in: { x: getSafeX(), y: getSafeY(), r: 25 }, out: { x: getSafeX(), y: getSafeY(), r: 25 } });
+                }
+            }
+
+            function getSafeX() { return 150 + Math.random() * (GAME_W - 300); }
+            function getSafeY() { return 150 + Math.random() * (GAME_H - 300); }
+            function maintainFood() { while(food.length < mods.maxFood) food.push({ x: getSafeX(), y: getSafeY(), r: 12 }); }
+
+            function spawnParticles(x, y, isGold = false) {
+                for(let i=0; i<25; i++) {
+                    particles.push({
+                        x: x, y: y,
+                        vx: (Math.random() - 0.5) * 12,
+                        vy: (Math.random() - 0.5) * 12,
+                        life: 1.0,
+                        color: (isGold || Math.random() > 0.4) ? '#D4AF37' : '#FFFFFF'
+                    });
+                }
+            }
+
+            function initGame(isMenuAI = false) {
+                resetMods();
+                snake = { x: GAME_W/2, y: GAME_H/2, a: Math.random() * Math.PI * 2, history: [], length: 30 };
+                food = []; falseFood = []; bombs = []; portals = []; gravityWells = []; particles = [];
+                score = 0; wheelProgress = 0;
+                
+                maintainFood();
+                updateScoreUI();
+                
+                if(!isMenuAI) {
+                    state = 'playing';
+                    UI.start.classList.add('hidden');
+                    UI.over.classList.add('hidden');
+                    UI.hud.classList.remove('hidden');
+                } else {
+                    state = 'menu';
+                }
+            }
+
+            // INPUT
+            window.addEventListener('keydown', e => {
+                if(e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') keys.Left = true;
+                if(e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') keys.Right = true;
+            });
+            window.addEventListener('keyup', e => {
+                if(e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') keys.Left = false;
+                if(e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') keys.Right = false;
+            });
+
+            const bindTouch = (id, key) => {
+                const el = document.getElementById(id);
+                const press = (e) => { e.preventDefault(); keys[key] = true; };
+                const release = (e) => { e.preventDefault(); keys[key] = false; };
+                el.addEventListener('touchstart', press); el.addEventListener('mousedown', press);
+                el.addEventListener('touchend', release); el.addEventListener('mouseup', release); el.addEventListener('mouseleave', release);
+            };
+            bindTouch('touch-left', 'Left'); bindTouch('touch-right', 'Right');
+
+            document.getElementById('startBtn').addEventListener('click', () => initGame(false));
+            document.getElementById('restartBtn').addEventListener('click', () => initGame(false));
+            UI.resumeBtn.addEventListener('click', () => {
+                UI.wheel.classList.add('hidden');
+                keys.Left = keys.Right = false; 
+                state = 'playing';
+            });
+
+            function triggerWheel() {
+                state = 'wheel';
+                wheelProgress = 0; updateScoreUI();
+                UI.wheel.classList.remove('hidden'); UI.resumeBtn.classList.add('hidden');
+                UI.wheelResult.textContent = "Spinning..."; UI.wheelDesc.textContent = "";
+                UI.wheelResult.className = "text-4xl font-cinzel mb-6 h-16 flex items-center justify-center text-center px-6 text-white spinning-text";
+
+                let spins = 0; let maxSpins = 20;
+                let interval = setInterval(() => {
+                    let randFate = FATES[Math.floor(Math.random() * FATES.length)];
+                    UI.wheelResult.textContent = randFate.name;
+                    UI.wheelResult.style.color = randFate.type === 'buff' ? '#D4AF37' : '#9B111E';
+                    
+                    spins++;
+                    if(spins >= maxSpins) {
+                        clearInterval(interval);
+                        let finalFate = FATES[Math.floor(Math.random() * FATES.length)];
+                        UI.wheelResult.textContent = finalFate.name;
+                        UI.wheelResult.style.color = finalFate.type === 'buff' ? '#D4AF37' : '#9B111E';
+                        UI.wheelResult.classList.remove('spinning-text');
+                        UI.wheelDesc.textContent = finalFate.desc;
+                        finalFate.apply();
+                        UI.resumeBtn.classList.remove('hidden');
+                    }
+                }, 100);
+            }
+
+            function addBuffUI(text) { if(!activeBuffs.includes(text)) { activeBuffs.push(text); updateBuffUI(); } }
+            function updateBuffUI() { UI.buffList.innerHTML = activeBuffs.map(b => `<div>+ ${b}</div>`).join(''); }
+            function updateLivesUI() { 
+                if(mods.lives > 0) { UI.livesDisplay.classList.remove('hidden'); UI.livesCount.textContent = mods.lives; } 
+                else { UI.livesDisplay.classList.add('hidden'); }
+            }
+            function updateScoreUI() { UI.score.textContent = score; UI.progress.style.width = `${(wheelProgress / FOOD_TO_WHEEL) * 100}%`; }
+
+            function killPlayer() {
+                if(mods.shield) { mods.shield = false; mods.invincibleFrames = 180; activeBuffs = activeBuffs.filter(b => b !== "Divine Shield"); updateBuffUI(); return; }
+                if(mods.lives > 0) { mods.lives--; updateLivesUI(); mods.invincibleFrames = 180; return; }
+                if(state === 'menu') { initGame(true); } 
+                else { state = 'gameover'; UI.hud.classList.add('hidden'); UI.over.classList.remove('hidden'); UI.finalScore.textContent = score; }
+            }
+
+            function updateAI() {
+                if(food.length === 0) return;
+                let target = food[0]; let minDist = Infinity;
+                for(let f of food) {
+                    let d = Math.hypot(f.x - snake.x, f.y - snake.y);
+                    if(d < minDist) { minDist = d; target = f; }
+                }
+                let targetAngle = Math.atan2(target.y - snake.y, target.x - snake.x);
+                let diff = targetAngle - snake.a;
+                while(diff > Math.PI) diff -= Math.PI * 2; while(diff < -Math.PI) diff += Math.PI * 2;
+                if(diff > 0.1) snake.a += mods.turnSpeed; else if (diff < -0.1) snake.a -= mods.turnSpeed;
+            }
+
+            function update() {
+                if (state === 'wheel' || state === 'gameover') return;
+                frameCount++;
+                if (mods.glitchFrames > 0) { mods.glitchFrames--; if(Math.random() < 0.05) return; } // Temporal Glitch
+                
+                let effTurn = mods.turnSpeed;
+
+                let left = mods.inverted ? keys.Right : keys.Left;
+                let right = mods.inverted ? keys.Left : keys.Right;
+
+                if (state === 'menu') { updateAI(); } 
+                else {
+                    if (left) snake.a -= effTurn;
+                    if (right) snake.a += effTurn;
+                    if (mods.drunk) snake.a += Math.sin(frameCount * 0.05) * 0.04;
+                }
+
+                if (mods.invincibleFrames > 0) mods.invincibleFrames--;
+                if (mods.etherealTailFrames > 0) mods.etherealTailFrames--;
+                
+                let dx = Math.cos(snake.a) * mods.speed;
+                let dy = Math.sin(snake.a) * mods.speed;
+
+                // Gravity Wells & Anchored
+                if(mods.anchored) { dx += (GAME_W/2 - snake.x) * 0.002; dy += (GAME_H/2 - snake.y) * 0.002; }
+                for(let gw of gravityWells) {
+                    let dist = Math.hypot(gw.x - snake.x, gw.y - snake.y);
+                    if(dist < gw.r) {
+                        let pullA = Math.atan2(gw.y - snake.y, gw.x - snake.x);
+                        let str = (1 - dist/gw.r) * gw.power;
+                        dx += Math.cos(pullA) * str * 15; dy += Math.sin(pullA) * str * 15;
+                    }
+                }
+
+                snake.x += dx; snake.y += dy;
+                snake.a = Math.atan2(dy, dx); // update real angle based on actual movement
+
+                // Screen Boundaries
+                let wrapped = false; let oldX = snake.x - dx; let oldY = snake.y - dy;
+                if (snake.x < 0) { if(mods.lethalWalls){killPlayer(); snake.x=0;} else {snake.x += GAME_W; wrapped = true; oldX = 0;} }
+                if (snake.x > GAME_W) { if(mods.lethalWalls){killPlayer(); snake.x=GAME_W;} else {snake.x -= GAME_W; wrapped = true; oldX = GAME_W;} }
+                if (snake.y < 0) { if(mods.lethalWalls){killPlayer(); snake.y=0;} else {snake.y += GAME_H; wrapped = true; oldY = 0;} }
+                if (snake.y > GAME_H) { if(mods.lethalWalls){killPlayer(); snake.y=GAME_H;} else {snake.y -= GAME_H; wrapped = true; oldY = GAME_H;} }
+
+                if (wrapped) { spawnParticles(oldX, oldY, true); spawnParticles(snake.x, snake.y, true); }
+
+                snake.history.unshift({ x: snake.x, y: snake.y, wrapped: wrapped });
+                if (snake.history.length > snake.length) snake.history.pop();
+
+                // Fates Logic
+                if (mods.magnetic) {
+                    food.forEach(f => {
+                        if(Math.hypot(f.x - snake.x, f.y - snake.y) < 250) {
+                            f.x += Math.cos(Math.atan2(snake.y - f.y, snake.x - f.x)) * 3;
+                            f.y += Math.sin(Math.atan2(snake.y - f.y, snake.x - f.x)) * 3;
+                        }
+                    });
+                }
+                if (mods.fleeingFood) {
+                    food.forEach(f => {
+                        if(Math.hypot(f.x - snake.x, f.y - snake.y) < 200) {
+                            f.x -= Math.cos(Math.atan2(snake.y - f.y, snake.x - f.x)) * 1.5;
+                            f.y -= Math.sin(Math.atan2(snake.y - f.y, snake.x - f.x)) * 1.5;
+                        }
+                    });
+                }
+                if (mods.tailSpikes && frameCount % 240 === 0 && snake.history.length > 10) {
+                    let tail = snake.history[snake.history.length-1];
+                    bombs.push({x: tail.x, y: tail.y, r: 20});
+                }
+                if (mods.goldEchoes && frameCount % 120 === 0 && snake.history.length > 10) {
+                    let tail = snake.history[snake.history.length-1];
+                    food.push({x: tail.x, y: tail.y, r: 12});
+                }
+
+                checkCollisions();
+            }
+
+            function checkCollisions() {
+                let head = snake.history[0];
+                if(!head) return;
+                let headRadius = mods.thick ? 22 : 10;
+                let foodReach = mods.reach ? headRadius + 30 : headRadius;
+                let isInvincible = mods.invincibleFrames > 0;
+
+                // Food
+                for (let i = food.length - 1; i >= 0; i--) {
+                    let f = food[i];
+                    if (Math.hypot(f.x - head.x, f.y - head.y) < f.r + foodReach) {
+                        food.splice(i, 1);
+                        snake.length += mods.gluttony ? 16 : 8;
+                        if(state === 'playing') {
+                            score += (mods.gluttony ? 30 : 10) * mods.multiplier;
+                            wheelProgress++;
+                            if (wheelProgress >= FOOD_TO_WHEEL) triggerWheel();
+                            updateScoreUI();
+                        }
+                        maintainFood();
+                    }
+                }
+
+                if(!isInvincible) {
+                    for (let i = falseFood.length - 1; i >= 0; i--) {
+                        if (Math.hypot(falseFood[i].x - head.x, falseFood[i].y - head.y) < falseFood[i].r + headRadius) {
+                            falseFood.splice(i, 1); killPlayer();
+                        }
+                    }
+                    for (let b of bombs) {
+                        if (Math.hypot(b.x - head.x, b.y - head.y) < b.r + headRadius - 5) killPlayer();
+                    }
+                    if(mods.etherealTailFrames <= 0) {
+                        for (let i = 20; i < snake.history.length; i++) {
+                            let pt = snake.history[i];
+                            if (Math.hypot(pt.x - head.x, pt.y - head.y) < headRadius * 1.5) { killPlayer(); break; }
+                        }
+                    }
+                }
+
+                // Portals
+                for (let p of portals) {
+                    if (Math.hypot(p.in.x - head.x, p.in.y - head.y) < p.in.r + headRadius) {
+                        spawnParticles(snake.x, snake.y, true);
+                        snake.x = p.out.x; snake.y = p.out.y;
+                        snake.history[0].wrapped = true; 
+                        spawnParticles(snake.x, snake.y, true);
+                        if(mods.portalMaster && state === 'playing') { score += 50 * mods.multiplier; updateScoreUI(); }
+                    }
+                }
+
+                // Particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    let p = particles[i];
+                    p.x += p.vx; p.y += p.vy; p.life -= 0.025;
+                    if (p.life <= 0) particles.splice(i, 1);
+                }
+            }
+
+            function draw() {
+                ctx.save();
+                ctx.clearRect(0, 0, GAME_W, GAME_H);
+
+                if (mods.vertigo) {
+                    ctx.translate(GAME_W/2, GAME_H/2);
+                    ctx.rotate(Math.sin(frameCount * 0.02) * 0.1);
+                    ctx.translate(-GAME_W/2, -GAME_H/2);
+                }
+                if (mods.tremors) {
+                    ctx.translate((Math.random()-0.5)*12, (Math.random()-0.5)*12);
+                }
+
+                // Draw Environment
+                for(let gw of gravityWells) {
+                    ctx.beginPath(); ctx.arc(gw.x, gw.y, gw.r, 0, Math.PI*2);
+                    let grad = ctx.createRadialGradient(gw.x, gw.y, 0, gw.x, gw.y, gw.r);
+                    grad.addColorStop(0, 'rgba(255,255,255,0.04)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = grad; ctx.fill();
+                    ctx.beginPath(); ctx.arc(gw.x, gw.y, gw.r * 0.15, 0, Math.PI*2);
+                    ctx.strokeStyle = 'rgba(212, 175, 55, 0.15)'; ctx.lineWidth = 1; ctx.stroke();
+                }
+
+                for(let p of portals) {
+                    ctx.beginPath(); ctx.arc(p.in.x, p.in.y, p.in.r, 0, Math.PI*2);
+                    ctx.strokeStyle = 'rgba(212, 175, 55, 0.9)'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.beginPath(); ctx.arc(p.out.x, p.out.y, p.out.r, 0, Math.PI*2);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'; ctx.lineWidth = 2; ctx.stroke();
+                }
+
+                for(let b of bombs) {
+                    ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 4, 0, Math.PI*2);
+                    ctx.fillStyle = '#0a0a0a'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#E8E8E8'; ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(b.x - b.r, b.y - b.r); ctx.lineTo(b.x + b.r, b.y + b.r);
+                    ctx.moveTo(b.x + b.r, b.y - b.r); ctx.lineTo(b.x - b.r, b.y + b.r);
+                    ctx.strokeStyle = 'rgba(212, 175, 55, 0.8)'; ctx.lineWidth = 1.5; ctx.stroke();
+                }
+
+                if(mods.clairvoyance && snake.history.length > 0) {
+                    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(212, 175, 55, 0.2)';
+                    food.forEach(f => {
+                        ctx.beginPath(); ctx.moveTo(snake.x, snake.y); ctx.lineTo(f.x, f.y); ctx.stroke();
+                    });
+                }
+
+                for(let f of food) {
+                    let grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
+                    grad.addColorStop(0, '#FFF5D1'); grad.addColorStop(1, '#D4AF37');
+                    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.fillStyle = grad; ctx.fill();
+                    if(mods.starlight) {
+                        let sg = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, 100);
+                        sg.addColorStop(0, 'rgba(212,175,55,0.15)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
+                        ctx.beginPath(); ctx.arc(f.x, f.y, 100, 0, Math.PI*2); ctx.fillStyle = sg; ctx.fill();
+                    }
+                }
+
+                for(let f of falseFood) {
+                    let grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
+                    grad.addColorStop(0, '#FF4D4D'); grad.addColorStop(1, '#9B111E');
+                    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.fillStyle = grad; ctx.fill();
+                }
+
+                for (let p of particles) {
+                    ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.color;
+                    ctx.beginPath(); ctx.arc(p.x, p.y, Math.random() * 2.5 + 1, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.globalAlpha = 1.0;
+
+                // --- DRAW SNAKE (FIXED BUG) ---
+                if (snake.history.length > 0) {
+                    // Set ALL path styling rules BEFORE iterating so every sub-path uses them correctly
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.lineWidth = mods.thick ? 26 : 16;
+                    
+                    if (mods.invincibleFrames > 0) {
+                        ctx.strokeStyle = (Math.floor(Date.now() / 150) % 2 === 0) ? 'rgba(255,255,255,0.9)' : 'rgba(212,175,55,0.5)';
+                    } else if (mods.etherealTailFrames > 0) {
+                        ctx.strokeStyle = 'rgba(212,175,55,0.3)';
+                    } else {
+                        ctx.strokeStyle = '#D4AF37'; // Solid Metallic Gold
+                    }
+
+                    ctx.beginPath();
+                    ctx.moveTo(snake.history[0].x, snake.history[0].y);
+                    
+                    for (let i = 1; i < snake.history.length; i++) {
+                        let pt = snake.history[i];
+                        let prev = snake.history[i-1];
+                        let dist = Math.hypot(pt.x - prev.x, pt.y - prev.y);
+
+                        // If teleporting/wrapping, finalize the current path and start a new one seamlessly
+                        if (pt.wrapped || dist > 100) {
+                            ctx.stroke(); 
+                            ctx.beginPath(); 
+                            ctx.moveTo(pt.x, pt.y);
+                        } else {
+                            ctx.lineTo(pt.x, pt.y);
+                        }
+                    }
+                    ctx.stroke(); // Finalize the last remaining sub-path
+
+                    // Draw Head Indicator
+                    ctx.beginPath();
+                    ctx.arc(snake.history[0].x, snake.history[0].y, mods.thick ? 10 : 6, 0, Math.PI*2);
+                    ctx.fillStyle = '#050505'; ctx.fill();
+                    ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+                }
+
+                // Fog Overlay
+                if(mods.fog) {
+                    let head = snake.history[0] || {x: GAME_W/2, y: GAME_H/2};
+                    let fg = ctx.createRadialGradient(head.x, head.y, 100, head.x, head.y, 600);
+                    fg.addColorStop(0, 'rgba(5,5,5,0)'); fg.addColorStop(1, 'rgba(5,5,5,0.98)');
+                    ctx.fillStyle = fg; ctx.fillRect(0,0,GAME_W,GAME_H);
+                }
+
+                ctx.restore();
+            }
+
+            function loop() {
+                update();
+                draw();
+                requestAnimationFrame(loop);
+            }
+
+            function resize() {
+                const ratio = GAME_W / GAME_H;
+                const windowRatio = window.innerWidth / window.innerHeight;
+                if (windowRatio < ratio) {
+                    canvas.style.width = '100vw'; canvas.style.height = `${window.innerWidth / ratio}px`;
+                } else {
+                    canvas.style.height = '100vh'; canvas.style.width = `${window.innerHeight * ratio}px`;
+                }
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            initGame(true); // Start AI loop
+            requestAnimationFrame(loop);
+        });
+    </script>
+</body>
+</html>
